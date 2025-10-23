@@ -10,6 +10,7 @@ import com.hmdp.entity.Shop;
 import com.hmdp.mapper.ShopMapper;
 import com.hmdp.service.IShopService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.utils.CacheClient;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisData;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +23,8 @@ import java.time.LocalDateTime;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+
+import static com.hmdp.utils.RedisConstants.CACHE_SHOP_TTL;
 
 /**
  * <p>
@@ -40,6 +43,8 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
     private static final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10);
 
+    @Resource
+    private CacheClient cacheClient;
     /**
      * 根据店铺ID查询店铺信息，支持缓存穿透和缓存击穿处理
      *
@@ -55,8 +60,18 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 //        if (shop == null) {
 //            return Result.fail("店铺不存在");
 //        }
-        Shop shop = queryWithLogicalExpire(id);
+       //Shop shop = cacheClient.queryWithPassThrough(RedisConstants.CACHE_SHOP_KEY ,id,Shop.class,this::getById,CACHE_SHOP_TTL, TimeUnit.MINUTES);
+        Shop shop = cacheClient.queryWithLogicalExpire(
+                RedisConstants.CACHE_SHOP_KEY,
+                id,
+                Shop.class,
+                this::getById,
+                20L,
+                TimeUnit.MINUTES
+        );
         return Result.ok(shop);
+
+
     }
 
     /**
@@ -102,7 +117,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
                 return null;
             }
             // 6.数据库存在,写入缓存,并设置超时时间
-            stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY + id, JSONUtil.toJsonStr(shop), RedisConstants.CACHE_SHOP_TTL, TimeUnit.MINUTES);
+            stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY + id, JSONUtil.toJsonStr(shop), CACHE_SHOP_TTL, TimeUnit.MINUTES);
             // 释放互斥锁
 
         } catch (InterruptedException e) {
@@ -161,7 +176,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             return null;
         }
         // 6.数据库存在,写入缓存,并设置超时时间
-        stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY + id, JSONUtil.toJsonStr(shop), RedisConstants.CACHE_SHOP_TTL, TimeUnit.MINUTES);
+        stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY + id, JSONUtil.toJsonStr(shop), CACHE_SHOP_TTL, TimeUnit.MINUTES);
         // 7.返回
         return shop;
 
