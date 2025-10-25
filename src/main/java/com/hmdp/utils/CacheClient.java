@@ -119,7 +119,6 @@ public class CacheClient {
         return r;
 
     }
-
     /**
      * 尝试获取分布式锁
      *
@@ -130,7 +129,6 @@ public class CacheClient {
         Boolean flag = stringRedisTemplate.opsForValue().setIfAbsent(key, "1", 10L, TimeUnit.SECONDS);
         return BooleanUtil.isTrue( flag);
     }
-
     /**
      * 释放分布式锁
      *
@@ -139,5 +137,4 @@ public class CacheClient {
     private void unLock(String key) {
         stringRedisTemplate.delete(key);
     }
-
 }
