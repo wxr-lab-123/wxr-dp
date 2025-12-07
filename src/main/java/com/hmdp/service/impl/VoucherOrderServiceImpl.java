@@ -12,6 +12,8 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.SimpleRedisLock;
 import com.hmdp.utils.UserHolder;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -40,6 +42,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private RedisIdWorker redisIdWorker;
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+    @Resource
+    private RedissonClient redissonClient;
 
     /**
      * 秒杀优惠券功能入口
@@ -63,8 +67,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         // 获取当前用户ID并加锁防止并发下单
         Long userId = UserHolder.getUser().getId();
         // 创建锁对象
-        SimpleRedisLock simpleRedisLock = new SimpleRedisLock("order:" + userId, stringRedisTemplate);
-        boolean isLock = simpleRedisLock.tryLock(1200);
+        //SimpleRedisLock simpleRedisLock = new SimpleRedisLock("order:" + userId, stringRedisTemplate);
+        RLock lock = redissonClient.getLock("lock:order:" + userId);
+        boolean isLock = lock.tryLock();
         // 获取锁
         if (!isLock) {
             return Result.fail("一人一单这一块");
@@ -81,9 +86,48 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return proxy.createVoutherOrder(voucherId);
         } finally {
             // 释放锁
-            simpleRedisLock.unlock();
+            lock.unlock();
         }
     }
+
+//    @Override
+//    public Result seckillVoucher(Long voucherId) {
+//        // 查询优惠券信息
+//        SeckillVoucher sv = seckillVoucherService.getById(voucherId);
+//
+//        // 判断秒杀时间是否合法
+//        if (sv.getBeginTime().isAfter(LocalDateTime.now()) || sv.getEndTime().isBefore(LocalDateTime.now()))
+//            return Result.fail("秒杀尚未开始或已经结束");
+//
+//        // 判断库存是否充足
+//        if (sv.getStock() < 1)
+//            return Result.fail("库存不足");
+//
+//        // 获取当前用户ID并加锁防止并发下单
+//        Long userId = UserHolder.getUser().getId();
+//        // 创建锁对象
+//        //SimpleRedisLock simpleRedisLock = new SimpleRedisLock("order:" + userId, stringRedisTemplate);
+//        RLock lock = redissonClient.getLock("lock:order:" + userId);
+//        boolean isLock = lock.tryLock();
+//        // 获取锁
+//        if (!isLock) {
+//            return Result.fail("一人一单这一块");
+//        }
+//        // 获取锁成功,创建订单
+////        synchronized (userId.toString().intern()) {
+////            // 获取当前代理对象以支持事务传播
+////            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+////            return proxy.createVoutherOrder(voucherId);
+////        }
+//        try {
+//            // 获取当前代理对象以支持事务传播
+//            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+//            return proxy.createVoutherOrder(voucherId);
+//        } finally {
+//            // 释放锁
+//            lock.unlock();
+//        }
+//    }
 
     /**
      * 创建秒杀订单
